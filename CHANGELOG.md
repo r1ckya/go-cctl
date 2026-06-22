@@ -9,6 +9,14 @@ from [Conventional Commit](https://www.conventionalcommits.org/) subjects
 (`feat` → minor, `fix`/`perf` → patch, `!`/`BREAKING CHANGE` → major) and
 inserted above older releases.
 
+## [0.6.2](https://github.com/geoah/go-cctl/compare/v0.6.1...v0.6.2) (2026-06-22)
+
+
+### Bug Fixes
+
+* **sync:** group workspaces after opening them, over a fresh snapshot ([0d0717a](https://github.com/geoah/go-cctl/commit/0d0717a4f150bf1a4996be35c3bd2261ee88de0c))
+* **sync:** open cmux workspaces for live sessions missing one ([73b1ea3](https://github.com/geoah/go-cctl/commit/73b1ea32240137471536df375868747b0dedb4cd))
+
 ## [0.6.1] - 2026-06-21
 - fix(tui): run cmux sync when a server (re)connects after refresh
 
