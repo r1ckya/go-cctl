@@ -270,3 +270,65 @@ func claudeSessionID(server, tmuxName string) string {
 	u[8] = (u[8] & 0x3f) | 0x80 // RFC 4122 variant
 	return fmt.Sprintf("%x-%x-%x-%x-%x", u[0:4], u[4:6], u[6:8], u[8:10], u[10:16])
 }
+
+// codexLaunchScript builds the full shell command tmux will execute for a
+// `cctl codex` session: cd into the worktree (or repo) and run the OpenAI
+// Codex CLI with the configured flags + optional prompt.
+//
+// It mirrors claudeLaunchScript but is deliberately simpler. Codex has no
+// equivalent of claude's cmux notification wrapper or the cctl notify bridge,
+// and — unlike claude's --session-id — codex cannot pin a session id at
+// creation, so cctl can't key resume on a deterministic id. Instead we key on
+// the working directory, the way `claude --continue` originally did: codex
+// records each session's cwd under ~/.codex/sessions, so if any session for
+// this directory exists we continue the most recent one (`codex resume
+// --last`, which is cwd-filtered by default); otherwise we start fresh. If the
+// probe misses (e.g. a future codex changes its on-disk layout) it falls back
+// to a fresh session — a safe degradation, never a hard error.
+//
+// PATH is fixed up the same way as the claude launcher: a respawn or any
+// non-login shell starts with a minimal PATH that omits the usual install
+// dirs. Codex is commonly installed via npm (global prefix) or nvm, so we
+// prepend the standard locations and source nvm if present.
+//
+// On codex exit the launcher waits for Enter, keeping the tmux session alive
+// so you can detach (Ctrl-b d) and resume later — matching the claude path.
+func codexLaunchScript(cwd string, codexFlags []string, prompt string) string {
+	fresh := append([]string{"codex"}, codexFlags...)
+	resume := append([]string{"codex", "resume", "--last"}, codexFlags...)
+	if prompt != "" {
+		fresh = append(fresh, prompt)
+		resume = append(resume, prompt)
+	}
+	freshCmd := joinShell(fresh)
+	resumeCmd := joinShell(resume)
+	return fmt.Sprintf(`cd %s || {
+  echo "cctl: worktree directory is gone — press Enter to close"
+  read _ || true
+  exit 1
+}
+# Ensure codex is found. A respawn or any non-login shell starts with a minimal
+# PATH that omits the usual install dirs; codex is commonly installed via npm
+# (global prefix) or nvm. Prepend the standard locations and source nvm so
+# every launch path resolves codex.
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/bin:$PATH"
+if [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1 || true; fi
+# Resume THIS directory's most recent codex session if one is recorded, else
+# start fresh. Codex can't pin a session id at creation, so we key resume on
+# the working directory: codex records each session's cwd under
+# ~/.codex/sessions, and "codex resume --last" is cwd-filtered by default.
+sessdir="$HOME/.codex/sessions"
+if [ -d "$sessdir" ] && grep -rqsF -- "$(pwd -P)" "$sessdir" 2>/dev/null; then
+  %s
+else
+  %s
+fi
+status=$?
+echo
+echo "(codex exited with status $status — press Enter to close, Ctrl-b d to keep session)"
+read _ || true`,
+		shellPath(cwd),
+		resumeCmd,
+		freshCmd,
+	)
+}

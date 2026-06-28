@@ -266,6 +266,7 @@ func renderInitConfig(username, source string, depthFromHome int) string {
 	fmt.Fprintf(&b, "  branch_prefix: %s          # worktree branch is <branch_prefix>/<session>\n", username)
 	b.WriteString("  worktree_base: ~/worktrees    # local-side path; per-repo override allowed\n")
 	b.WriteString("  claude_flags: [\"--dangerously-skip-permissions\"]\n")
+	b.WriteString("  # codex_flags: []            # flags for `cctl codex` (OpenAI Codex CLI)\n")
 	b.WriteString("  mosh: true                    # ignored for local servers\n\n")
 	b.WriteString("servers:\n")
 	b.WriteString("  local:\n")

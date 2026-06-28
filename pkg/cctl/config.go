@@ -25,9 +25,12 @@ type Defaults struct {
 	BranchPrefix string   `yaml:"branch_prefix"`
 	WorktreeBase string   `yaml:"worktree_base"`
 	ClaudeFlags  []string `yaml:"claude_flags"`
-	Mosh         *bool    `yaml:"mosh"`
-	Shell        string   `yaml:"shell"`
-	LogLevel     string   `yaml:"log_level"` // debug, info (default), warn, error
+	// CodexFlags are passed to the OpenAI Codex CLI by `cctl codex`, the
+	// analogue of ClaudeFlags for `cctl claude` (e.g. ["-m", "gpt-5.1"]).
+	CodexFlags []string `yaml:"codex_flags"`
+	Mosh       *bool    `yaml:"mosh"`
+	Shell      string   `yaml:"shell"`
+	LogLevel   string   `yaml:"log_level"` // debug, info (default), warn, error
 	// SyncAllServers controls whether the cmux↔cctl sync (R/S + the startup
 	// pass) checks tmux liveness and closes stale tabs on EVERY server, not
 	// just the local one. Default true. Set false to limit liveness/close to
@@ -175,6 +178,7 @@ type Resolved struct {
 	BranchPrefix       string
 	WorktreeBase       string
 	ClaudeFlags        []string
+	CodexFlags         []string
 	UseMosh            bool
 	DefaultBranch      string
 	WorktreePostCreate []string
@@ -296,6 +300,7 @@ func (c *Config) resolve(serverName, repoName string) (*Resolved, error) {
 		BranchPrefix:       branchPrefix,
 		WorktreeBase:       wtBase,
 		ClaudeFlags:        c.Defaults.ClaudeFlags,
+		CodexFlags:         c.Defaults.CodexFlags,
 		UseMosh:            useMosh,
 		DefaultBranch:      defaultBranch,
 		WorktreePostCreate: append([]string(nil), c.Defaults.WorktreePostCreate...),

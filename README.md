@@ -127,6 +127,11 @@ cctl
 - Discovers git repos under configured roots (local + remote).
 - Lets you start a new Claude session on a repo (worktree auto-created)
   or attach to an existing one. Single keystroke for both.
+- `cctl codex` is the OpenAI Codex equivalent of `cctl claude`: same
+  target/session/worktree semantics, but it launches the `codex` CLI
+  (configure flags via `codex_flags`). Codex has no
+  `--session-id`, so resume is keyed on the worktree directory
+  (`codex resume --last`).
 - Names tmux sessions `cctl/<repo>/<worktree>/<session>` and matches them
   back into the tree, so the TUI is the single source of truth.
 - Guards aggressively against deleting anything outside `worktree_base` —

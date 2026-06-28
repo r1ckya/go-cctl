@@ -56,6 +56,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "path to cctl config (default: $CCTL_CONFIG or ~/.cctl.yaml)")
 
 	rootCmd.AddCommand(newClaudeCmd())
+	rootCmd.AddCommand(newCodexCmd())
 	rootCmd.AddCommand(newLsCmd())
 	rootCmd.AddCommand(newRmCmd())
 	rootCmd.AddCommand(newRmaCmd())
