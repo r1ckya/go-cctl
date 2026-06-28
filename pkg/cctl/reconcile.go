@@ -283,7 +283,7 @@ func respawnClaude(cfg *Config, e wsEntry) error {
 	if e.Worktree != "" && e.Worktree != "main" {
 		cwd = worktreePath(r.WorktreeBase, r.RepoName, e.Worktree)
 	}
-	launch := claudeLaunchScript(cwd, r.ClaudeFlags, "", !r.Server.Local, claudeSessionID(e.Server, e.TmuxName))
+	launch := agentLaunchScript(r, cwd, "", e.TmuxName)
 	_, err = runRemote(r.Server, fmt.Sprintf("tmux respawn-window -k -t %s %s", shellQuote(e.TmuxName), shellQuote(launch)))
 	return err
 }
@@ -660,7 +660,7 @@ func restoreSpawn(cfg *Config, e wsEntry) error {
 	}
 	group, groupCwd := repoGroup(r)
 	_, err = spawnInNewWindow(cfg, r.Server, r.UseMosh,
-		attachOrRespawn(r, tmuxName(r.RepoName, e.Worktree, e.Session), cwd),
+		agentAttachOrRespawn(r, tmuxName(r.RepoName, e.Worktree, e.Session), cwd),
 		SpawnSpec{
 			Server:     e.Server,
 			Repo:       e.Repo,

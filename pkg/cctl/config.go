@@ -28,9 +28,15 @@ type Defaults struct {
 	// CodexFlags are passed to the OpenAI Codex CLI by `cctl codex`, the
 	// analogue of ClaudeFlags for `cctl claude` (e.g. ["-m", "gpt-5.1"]).
 	CodexFlags []string `yaml:"codex_flags"`
-	Mosh       *bool    `yaml:"mosh"`
-	Shell      string   `yaml:"shell"`
-	LogLevel   string   `yaml:"log_level"` // debug, info (default), warn, error
+	// Agent selects which coding agent the TUI's session shortcuts (new
+	// session, attach/respawn, the `U` upgrade, reconcile revival) launch:
+	// "claude" (default) or "codex". Override per-server or per-repo. The
+	// `cctl claude` / `cctl codex` CLI commands always force their own agent
+	// regardless of this setting.
+	Agent    string `yaml:"agent"`
+	Mosh     *bool  `yaml:"mosh"`
+	Shell    string `yaml:"shell"`
+	LogLevel string `yaml:"log_level"` // debug, info (default), warn, error
 	// SyncAllServers controls whether the cmux↔cctl sync (R/S + the startup
 	// pass) checks tmux liveness and closes stale tabs on EVERY server, not
 	// just the local one. Default true. Set false to limit liveness/close to
@@ -68,6 +74,9 @@ type Defaults struct {
 	// sessions. Override when claude is managed by npm/mise/brew on a
 	// given setup (e.g. "npm install -g @anthropic-ai/claude-code").
 	ClaudeUpdate string `yaml:"claude_update"`
+	// CodexUpdate is the codex equivalent of ClaudeUpdate (the `U` key's
+	// upgrade command for codex sessions). Defaults to "codex update".
+	CodexUpdate string `yaml:"codex_update"`
 }
 
 // syncAllServers reports whether sync should check liveness + close stale
@@ -117,6 +126,8 @@ type Server struct {
 	Local       bool            `yaml:"local"` // run commands locally instead of via ssh/mosh
 	RepoSources []RepoSource    `yaml:"repo_sources"`
 	Repos       map[string]Repo `yaml:"repos"`
+	// Agent overrides defaults.agent for this server (see Defaults.Agent).
+	Agent string `yaml:"agent"`
 	// Transport selects how the TUI opens this server's sessions in cmux.
 	// "" / "mosh" (default): a local workspace running mosh/ssh inside a
 	// wrapper script. "cmux-ssh": a cmux remote-SSH workspace (`cmux ssh`)
@@ -167,6 +178,8 @@ type Repo struct {
 	Path          string `yaml:"path"`
 	DefaultBranch string `yaml:"default_branch"`
 	WorktreeBase  string `yaml:"worktree_base"`
+	// Agent overrides server/defaults agent for this repo (see Defaults.Agent).
+	Agent string `yaml:"agent"`
 }
 
 // Resolved is a server+repo pair with defaults already merged in.
@@ -179,6 +192,7 @@ type Resolved struct {
 	WorktreeBase       string
 	ClaudeFlags        []string
 	CodexFlags         []string
+	Agent              string
 	UseMosh            bool
 	DefaultBranch      string
 	WorktreePostCreate []string
@@ -292,6 +306,14 @@ func (c *Config) resolve(serverName, repoName string) (*Resolved, error) {
 		defaultBranch = "main"
 	}
 
+	// Agent precedence: repo → server → defaults → "claude". Validated here
+	// so a typo fails loudly at resolve time rather than launching the wrong
+	// (or no) agent.
+	agent := firstNonEmpty(repo.Agent, srv.Agent, c.Defaults.Agent, agentClaude)
+	if agent != agentClaude && agent != agentCodex {
+		return nil, fmt.Errorf("invalid agent %q for %s/%s (want %q or %q)", agent, serverName, repoName, agentClaude, agentCodex)
+	}
+
 	return &Resolved{
 		ServerName:         serverName,
 		Server:             srv,
@@ -301,6 +323,7 @@ func (c *Config) resolve(serverName, repoName string) (*Resolved, error) {
 		WorktreeBase:       wtBase,
 		ClaudeFlags:        c.Defaults.ClaudeFlags,
 		CodexFlags:         c.Defaults.CodexFlags,
+		Agent:              agent,
 		UseMosh:            useMosh,
 		DefaultBranch:      defaultBranch,
 		WorktreePostCreate: append([]string(nil), c.Defaults.WorktreePostCreate...),

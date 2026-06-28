@@ -132,6 +132,11 @@ cctl
   (configure flags via `codex_flags`). Codex has no
   `--session-id`, so resume is keyed on the worktree directory
   (`codex resume --last`).
+- The TUI's session shortcuts (new session, attach/respawn, the `U`
+  upgrade, reconcile revival) follow the resolved **`agent`** for each
+  server/repo — set `agent: codex` at `defaults`, on a server, or on a
+  repo and every shortcut drives codex there instead of claude
+  (`codex_update` overrides the `U`-key command, default `codex update`).
 - Names tmux sessions `cctl/<repo>/<worktree>/<session>` and matches them
   back into the tree, so the TUI is the single source of truth.
 - Guards aggressively against deleting anything outside `worktree_base` —
