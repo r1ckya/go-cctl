@@ -181,18 +181,11 @@ func isTerminalSession(name string) bool {
 	return terminalSessionRe.MatchString(name)
 }
 
-// claudeUpdateScript wraps the configured update command so it resolves
-// claude the way the user's interactive shell would. runRemote executes
-// over bare ssh, which gets the minimal non-login PATH — claude almost
-// never lives there (native installer → ~/.local/bin, mise → shims, npm
-// → a prefix dir, all added by profile files). A login shell picks those
-// up; the explicit PATH prepend covers boxes whose additions only happen
-// in interactive rc files that early-return for non-interactive shells.
+// claudeUpdateScript is the claude-specific name for the update wrapper; it
+// delegates to agentUpdateScript (which prepends the well-known install dirs
+// and sources nvm). Retained so existing callers/tests keep working.
 func claudeUpdateScript(updateCmd string) string {
-	return fmt.Sprintf(
-		`export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$HOME/.claude/local:$HOME/.npm-global/bin:$HOME/bin:$PATH"
-exec bash -lc %s`,
-		shellQuote(updateCmd))
+	return agentUpdateScript(updateCmd)
 }
 
 // terminalCmd is the idempotent command for a plain-shell session: attach

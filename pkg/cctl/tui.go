@@ -1934,25 +1934,16 @@ func (m *tuiModel) upgradeClaude() (tea.Model, tea.Cmd) {
 			"wait for the running action to finish before upgrading claude")
 	}
 	srv := m.cfg.Servers[server]
-	updateCmd := m.cfg.claudeUpdateCmd()
-	log().Info("tui-upgrade-claude", "server", server, "sessions", len(names), "cmd", updateCmd)
+	log().Info("tui-upgrade-agents", "server", server, "sessions", len(names))
 	// Keyed on the server row so everything underneath it is blocked (and
-	// spins) while claude upgrades and the sessions bounce.
+	// spins) while the agent(s) upgrade and the sessions bounce.
 	id, tick := m.startTask("server:"+server,
-		fmt.Sprintf("upgrading claude on %s (then restarting %d session(s))…", server, len(names)))
-	return m, tea.Batch(tick, m.upgradeClaudeCmd(server, srv, updateCmd, names, id))
+		fmt.Sprintf("upgrading agents on %s (then restarting %d session(s))…", server, len(names)))
+	return m, tea.Batch(tick, m.upgradeClaudeCmd(server, srv, names, id))
 }
 
-func (m *tuiModel) upgradeClaudeCmd(serverName string, srv Server, updateCmd string, sessions []string, taskID int) tea.Cmd {
+func (m *tuiModel) upgradeClaudeCmd(serverName string, srv Server, sessions []string, taskID int) tea.Cmd {
 	return func() tea.Msg {
-		out, err := runRemote(srv, claudeUpdateScript(updateCmd))
-		if err != nil {
-			return actionDoneMsg{
-				msg:    fmt.Sprintf("claude upgrade failed on %s", serverName),
-				err:    fmt.Errorf("%s: %w — %s", updateCmd, err, abbrev(strings.TrimSpace(out), 200)),
-				taskID: taskID,
-			}
-		}
 		// Map sanitized tmux repo names back to real ones so resolve() finds
 		// the worktree (e.g. "rxtx_dev" → "rxtx.dev").
 		bySafe := map[string]string{}
@@ -1961,25 +1952,51 @@ func (m *tuiModel) upgradeClaudeCmd(serverName string, srv Server, updateCmd str
 				bySafe[tmuxSafeName(n)] = n
 			}
 		}
+		// Sessions on one server can resolve to different agents (different
+		// repos), so the self-update is keyed on the resolved agent and run at
+		// most once per agent. If an agent's update fails we skip respawning
+		// that agent's sessions — same conservative intent as the original
+		// "update failed → don't bounce sessions", scoped per agent.
+		updated := map[string]bool{}
+		updateErrs := map[string]string{}
+		ensureUpdate := func(agent string) bool {
+			if updated[agent] {
+				return updateErrs[agent] == ""
+			}
+			updated[agent] = true
+			cmd := m.cfg.agentUpdateCmd(agent)
+			if out, err := runRemote(srv, agentUpdateScript(cmd)); err != nil {
+				updateErrs[agent] = fmt.Sprintf("%s: %v — %s", cmd, err, abbrev(strings.TrimSpace(out), 200))
+				log().Warn("tui-agent-update-fail", "server", serverName, "agent", agent, "err", err.Error())
+				return false
+			}
+			return true
+		}
+
 		restarted, failed := 0, 0
 		for _, name := range sessions {
 			// Respawn with the CURRENT launch script (not the window's stale
-			// original), so the restart picks up the new claude binary AND the
-			// current flags/hooks — notably cctl's --settings notification
-			// bridge. claude --continue resumes the conversation, so the
-			// session survives. Falls back to re-running the original command
-			// when we can't resolve the session's worktree.
+			// original), so the restart picks up the new agent binary AND the
+			// current flags/hooks. claude --continue / codex resume --last
+			// resumes the conversation, so the session survives. Falls back to
+			// re-running the original command when we can't resolve the
+			// session's worktree.
 			cmd := fmt.Sprintf("tmux respawn-window -k -t %s", shellQuote(name))
 			if repo, wt, _, ok := parseTmuxName(name); ok {
 				if real, found := bySafe[repo]; found {
 					repo = real
 				}
 				if r, rerr := m.cfg.resolve(serverName, repo); rerr == nil {
+					if !ensureUpdate(r.Agent) {
+						// Update for this agent failed; leave the session as-is.
+						failed++
+						continue
+					}
 					cwd := r.Repo.Path
 					if wt != "" && wt != "main" {
 						cwd = worktreePath(r.WorktreeBase, r.RepoName, wt)
 					}
-					launch := claudeLaunchScript(cwd, r.ClaudeFlags, "", !r.Server.Local, claudeSessionID(serverName, name))
+					launch := agentLaunchScript(r, cwd, "", name)
 					cmd = fmt.Sprintf("tmux respawn-window -k -t %s %s", shellQuote(name), shellQuote(launch))
 				}
 			}
@@ -1990,7 +2007,19 @@ func (m *tuiModel) upgradeClaudeCmd(serverName string, srv Server, updateCmd str
 			}
 			restarted++
 		}
-		msg := fmt.Sprintf("claude upgraded on %s; relaunched %d session(s)", serverName, restarted)
+		msg := fmt.Sprintf("agents upgraded on %s; relaunched %d session(s)", serverName, restarted)
+		if len(updateErrs) > 0 {
+			parts := make([]string, 0, len(updateErrs))
+			for agent, e := range updateErrs {
+				parts = append(parts, fmt.Sprintf("%s (%s)", agent, e))
+			}
+			return actionDoneMsg{
+				msg:     msg,
+				err:     fmt.Errorf("agent update failed: %s", strings.Join(parts, "; ")),
+				refresh: serverName,
+				taskID:  taskID,
+			}
+		}
 		if failed > 0 {
 			return actionDoneMsg{
 				msg:     msg,
@@ -2020,7 +2049,7 @@ func (m *tuiModel) attachCmd(serverName, repoName string, sess SessionInfo, task
 		return prepareDoneMsg{
 			server:     r.Server,
 			useMosh:    r.UseMosh,
-			cmdStr:     attachOrRespawn(r, sess.Name, cwd),
+			cmdStr:     agentAttachOrRespawn(r, sess.Name, cwd),
 			cwd:        workspaceCwd(r, sess.Worktree),
 			wsTitle:    cmuxWsTitle(repoName, sess.Worktree, sess.Session),
 			tabTitle:   sess.Session,
@@ -2053,7 +2082,7 @@ func (m *tuiModel) newSessionPrepareCmd(serverName, repoName, worktree, sessionN
 				"server", serverName, "repo", repoName, "err", err.Error())
 			return prepareDoneMsg{err: err, taskID: taskID}
 		}
-		cmdStr, err := prepareClaude(r, worktree, sessionName, "", prompt, false, false)
+		cmdStr, err := prepareAgent(r, worktree, sessionName, "", prompt, false, false)
 		log().Info("tui-new-session-prepare-done",
 			"server", serverName, "session", sessionName,
 			"dur", time.Since(start).String(), "err", errString(err))
