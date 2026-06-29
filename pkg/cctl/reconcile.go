@@ -283,6 +283,12 @@ func respawnClaude(cfg *Config, e wsEntry) error {
 	if e.Worktree != "" && e.Worktree != "main" {
 		cwd = worktreePath(r.WorktreeBase, r.RepoName, e.Worktree)
 	}
+	// Relaunch the agent this session was created with (persisted in the
+	// manifest); fall back to the config-resolved agent for older/adopted
+	// entries that predate per-session tracking.
+	if e.Agent != "" {
+		r.Agent = e.Agent
+	}
 	launch := agentLaunchScript(r, cwd, "", e.TmuxName)
 	_, err = runRemote(r.Server, fmt.Sprintf("tmux respawn-window -k -t %s %s", shellQuote(e.TmuxName), shellQuote(launch)))
 	return err
@@ -658,6 +664,10 @@ func restoreSpawn(cfg *Config, e wsEntry) error {
 	if e.Worktree != "" && e.Worktree != "main" {
 		cwd = worktreePath(r.WorktreeBase, r.RepoName, e.Worktree)
 	}
+	// Honor the session's recorded agent (fallback: config-resolved).
+	if e.Agent != "" {
+		r.Agent = e.Agent
+	}
 	group, groupCwd := repoGroup(r)
 	_, err = spawnInNewWindow(cfg, r.Server, r.UseMosh,
 		agentAttachOrRespawn(r, tmuxName(r.RepoName, e.Worktree, e.Session), cwd),
@@ -666,6 +676,7 @@ func restoreSpawn(cfg *Config, e wsEntry) error {
 			Repo:       e.Repo,
 			Worktree:   e.Worktree,
 			Session:    e.Session,
+			Agent:      r.Agent,
 			Cwd:        workspaceCwd(r, e.Worktree),
 			WsTitle:    cmuxWsTitle(e.Repo, e.Worktree, e.Session),
 			TabTitle:   e.Session,

@@ -49,6 +49,9 @@ type SpawnSpec struct {
 	Repo     string
 	Worktree string
 	Session  string
+	// Agent is the coding agent this session runs ("claude"/"codex"),
+	// recorded in the manifest so revive/respawn relaunch the right one.
+	Agent string
 	// Script is the wrapper-script path; the only thing that must run.
 	Script string
 	// Cwd is the working-directory hint for a newly created workspace

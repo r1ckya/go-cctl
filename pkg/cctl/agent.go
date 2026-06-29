@@ -13,6 +13,15 @@ const (
 	agentCodex  = "codex"
 )
 
+// otherAgent returns the supported agent that isn't a — the TUI's agent
+// toggle flips between the two with it.
+func otherAgent(a string) string {
+	if a == agentCodex {
+		return agentClaude
+	}
+	return agentCodex
+}
+
 // firstNonEmpty returns the first argument that isn't the empty string, or ""
 // if all are empty. Used for agent precedence (repo → server → defaults).
 func firstNonEmpty(vals ...string) string {

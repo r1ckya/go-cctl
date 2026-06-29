@@ -36,7 +36,12 @@ type wsEntry struct {
 	Cwd      string `json:"cwd"`    // workspace cwd hint
 	Script   string `json:"script"` // durable wrapper path
 	Remote   bool   `json:"remote"` // cmux-ssh transport (no local resume binding)
-	Updated  int64  `json:"updated"`
+	// Agent is the coding agent this session was created with ("claude" or
+	// "codex"). Empty for sessions created before per-session agent tracking
+	// (and for adopted sessions) — callers fall back to the config-resolved
+	// agent, so old manifests keep working.
+	Agent   string `json:"agent,omitempty"`
+	Updated int64  `json:"updated"`
 }
 
 func (e wsEntry) key() string {
@@ -129,6 +134,21 @@ func saveManifest(entries []wsEntry) error {
 	return nil
 }
 
+// manifestAgent returns the recorded agent for a session, or "" if the session
+// isn't tracked or predates per-session agent tracking. Used so attaching to an
+// existing session re-records its real agent instead of the config default.
+func manifestAgent(server, repo, worktree, session string) string {
+	want := wsEntry{Server: server, Repo: repo, Worktree: worktree, Session: session}.key()
+	manifestMu.Lock()
+	defer manifestMu.Unlock()
+	for _, e := range loadManifest() {
+		if e.key() == want {
+			return e.Agent
+		}
+	}
+	return ""
+}
+
 // manifestUpsert records (or refreshes) a session from a successful spawn.
 func manifestUpsert(spec SpawnSpec) {
 	if !spec.hasIdentity() {
@@ -147,6 +167,7 @@ func manifestUpsert(spec SpawnSpec) {
 		Cwd:      spec.Cwd,
 		Script:   spec.Script,
 		Remote:   spec.Remote != nil,
+		Agent:    spec.Agent,
 		Updated:  time.Now().Unix(),
 	}
 	manifestMu.Lock()
